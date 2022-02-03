@@ -1,0 +1,246 @@
+---
+title: |
+  | University of Edinburgh 
+  | Health Data Science Course 
+  | R Programming Assignment
+author: "Exam number: B010574"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output:
+  pdf_document:
+    toc: yes
+    number_sections: true
+urlcolor: blue
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, dpi = 300, tidy.opts=list(width.cutoff=70), tidy=TRUE)
+```
+
+# Overview
+
+This assignment uses data from the Scottish Health and Social Care Open Data platform (https://www.opendata.nhs.scot/dataset/unintentional-injuries), downloaded in CSV format.
+
+The data shows all hospital admissions and deaths (associated with unintentional injuries) recorded annually in Scotland between 2010 and 2019. The data also contains parameters such as age group, sex and injury type, for each admission and death. 
+
+This report outlines an analysis of this data, with a focus on injury types, and how these are related to age and sex demographic groups in the data. 
+
+# Data Processing
+
+## Libraries
+
+```{r packages and libraries, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(janitor)
+library(ggplot2)
+library(knitr)
+library(kableExtra)
+library(formatR)
+```
+
+## Import data
+
+```{r import data, echo=TRUE, tidy.opts=list(width.cutoff=70), tidy=TRUE}
+#import data
+orig_ui_admissions <- read_csv("ui_admissions_2021.csv")
+orig_ui_deaths <- read_csv("ui_deaths_2021.csv")
+```
+
+## Cleaning, wrangling, analysis
+
+The data is 'tidy' and in 'long' format, and does not require further arrangement in this respect.
+
+The data has been aggregated in several ways (by geographic location, injury type, age group and sex) and special consideration has been taken to filter out these aggregated rows, as a first step in the manipulation, to focus on the aims of the analysis.
+ 
+The admissions data is manipulated to show the total number of each injury type, by age group.
+
+```{r clean and wrangle data 1, echo=TRUE, tidy.opts=list(width.cutoff=70), tidy=TRUE}
+#cleaning, wrangling - admissions, age 
+ui_admissions_age <- orig_ui_admissions %>%
+  clean_names() %>%
+  #filter out 'Scotland' data
+  filter (hbr != "S92000003") %>%
+  #filter to use only injuries with labels, excluding 'All' aggregated category
+  filter((injury_type != "All Diagnoses")) %>%
+  #filter to use only disaggregated categories for age and sex, and aggregated categories for location = 'All'
+  filter((age_group != "All") & (sex == "All") & (injury_location == "All")) %>%
+  #turn age_group into factor type, set order of levels
+  mutate(age_group=factor(age_group, levels=c("0-4 years", "5-9 years" , "10-14 years", "15-24 years", "25-44 years", "45-64 years", "65-74 years", "75plus years"))) %>%
+  #calculate total no. of admissions by age and injury type
+  group_by(age_group, injury_type) %>%
+  summarise(tot_by_age_injury=sum(number_of_admissions)) %>%
+  arrange(desc(tot_by_age_injury), .by_group = TRUE)
+```
+
+The deaths data is manipulated to show the total number of each injury type, by age group.
+
+```{r clean and wrangle data 2, echo=TRUE, tidy.opts=list(width.cutoff=70), tidy=TRUE}
+#cleaning, wrangling - deaths, age 
+ui_deaths_age <- orig_ui_deaths %>%
+  clean_names() %>%
+  # modify injury names to match those in admissions, to enable join
+  #  - assumptions:
+  # "Land transport accidents" -> "RTA",
+  # "Accidental exposure" -> "Accidental Exposure",
+  # "Struck by,against" -> "Struck by, against"
+  mutate(injury_type = str_replace(injury_type, "Land transport accidents", "RTA")) %>%
+  mutate(injury_type = str_replace(injury_type, "Accidental exposure", "Accidental Exposure")) %>%
+  mutate(injury_type = str_replace(injury_type, "Struck by,against", "Struck by, against")) %>%
+  #filter out 'Scotland' data
+  filter (hbr != "S92000003") %>%
+  #filter to use only injuries with labels, excluding 'All' aggregated category
+  filter((injury_type != "All")) %>%
+  #filter to use only disaggregated categories for age and sex, and aggregated categories for location = 'All'
+  filter((age_group != "All") & (sex == "All") & (injury_location == "All")) %>%
+  #turn age_group into factor type, set order of levels
+  mutate(age_group=factor(age_group, levels=c("0-4 years", "5-9 years" , "10-14 years", "15-24 years", "25-44 years", "45-64 years", "65-74 years", "75plus years"))) %>%
+  #calculate total no. of deaths by age and injury type
+  group_by(age_group, injury_type) %>%
+  summarise(tot_by_age_injury=sum(numberof_deaths)) %>%
+  arrange(desc(tot_by_age_injury), .by_group = TRUE)
+```
+
+The admissions data is manipulated to show the total number of each injury type, by sex.
+
+```{r clean and wrangle data 3, echo=TRUE, tidy.opts=list(width.cutoff=70), tidy=TRUE}
+#cleaning, wrangling - admissions, sex
+ui_admissions_sex <- orig_ui_admissions %>%
+  clean_names() %>%
+  #filter out 'Scotland' data
+  filter (hbr != "S92000003") %>%
+  #filter to use only injuries with labels, excluding 'All' aggregated category
+  filter((injury_type != "All Diagnoses")) %>%
+  #filter to use only disaggregated categories for age and sex, and aggregated categories for location = 'All'
+  filter((age_group == "All") & (sex != "All") & (injury_location == "All")) %>%
+  #calculate total no. of admissions by sex and injury type
+  group_by(sex, injury_type) %>%
+  summarise(tot_by_sex_injury=sum(number_of_admissions)) %>%
+  arrange(desc(tot_by_sex_injury), .by_group = TRUE)
+```
+
+The deaths data is manipulated to show the total number of each injury type, by sex.
+
+```{r clean and wrangle data 4, echo=TRUE, tidy.opts=list(width.cutoff=70), tidy=TRUE}
+#cleaning, wrangling - deaths, sex
+ui_deaths_sex <- orig_ui_deaths %>%
+  clean_names() %>%
+  # modify injury names to match those in admissions, to enable join
+  #  - assumptions:
+  # "Land transport accidents" -> "RTA",
+  # "Accidental exposure" -> "Accidental Exposure",
+  # "Struck by,against" -> "Struck by, against"
+  mutate(injury_type = str_replace(injury_type, "Land transport accidents", "RTA")) %>%
+  mutate(injury_type = str_replace(injury_type, "Accidental exposure", "Accidental Exposure")) %>%
+  mutate(injury_type = str_replace(injury_type, "Struck by,against", "Struck by, against")) %>%
+  #filter out 'Scotland' data
+  filter (hbr != "S92000003") %>%
+  #filter to use only injuries with labels, excluding 'All' aggregated category
+  filter((injury_type != "All")) %>%
+  #filter to use only disaggregated categories for age and sex, and aggregated categories for location = 'All'
+  filter((age_group == "All") & (sex != "All") & (injury_location == "All")) %>%
+  #calculate total no. of deaths by sex and injury type
+  group_by(sex, injury_type) %>%
+  summarise(tot_by_sex_injury=sum(numberof_deaths)) %>%
+  arrange(desc(tot_by_sex_injury), .by_group = TRUE)
+```
+
+The manipulated admissions and deaths data frames are joined by age group and injury type, to show total numbers of each injury types for each age group, in both admissions and deaths, to enable a calculation of the rate of deaths for each admission, by age group.
+
+```{r join 1, echo=TRUE, tidy.opts=list(width.cutoff = 70), tidy=TRUE}
+#join and calculate rate of deaths per admission, as a percentage, by age group, for each injury type
+# - an assumption is that this calculation makes sense in terms of the supplied two NHS datasets
+joined_df1 <- inner_join(ui_admissions_age, ui_deaths_age, by = c("age_group", "injury_type")) %>%
+  mutate (rate = round(((tot_by_age_injury.y/tot_by_age_injury.x)*100), digits=2))
+```
+
+The manipulated admissions and deaths data frames are joined by sex and injury type, to show total numbers of each injury types for each sex, in both admissions and deaths, to enable a calculation of the rate of deaths for each admission, by sex.
+
+```{r join 2, echo=TRUE, tidy.opts=list(width.cutoff = 70), tidy=TRUE}
+#join and calculate rate of deaths per admission, as a percentage, by sex, for each injury type
+# - an assumption is that this calculation makes sense in terms of the supplied two NHS datasets
+joined_df2 <- inner_join(ui_admissions_sex, ui_deaths_sex, by = c("sex", "injury_type")) %>%
+  mutate (rate = round(((tot_by_sex_injury.y/tot_by_sex_injury.x)*100), digits=2))
+```
+
+\newpage
+# Results and Discussion
+
+## Table 1
+
+Total numbers of each injury type for each age group, with rates of death for admission, by age group.
+    
+```{r table 1, echo=TRUE, tidy.opts=list(width.cutoff = 70), tidy=TRUE}
+joined_df1 %>% 
+  rename ("Age Group" = age_group, "Injury Type" = injury_type, "Admissions" = tot_by_age_injury.x, "Deaths" = tot_by_age_injury.y, "Rate (%)" = rate) %>%
+  kable(caption = "Total numbers of each injury type for each age group, with rates of death for 
+        admission, by age group") %>% 
+  row_spec(0,bold=TRUE) %>% 
+  kable_styling(font_size = 7, latex_options = c("striped", "HOLD_position"), full_width = T)
+```
+## Table 2
+
+Total numbers of each injury type for each sex, with rates of death for admission, by sex.
+
+```{r table 2, echo=TRUE, tidy.opts=list(width.cutoff = 70), tidy=TRUE}
+joined_df2 %>%
+  rename ("Sex" = sex, "Injury Type" = injury_type, "Admissions" = tot_by_sex_injury.x, "Deaths" = tot_by_sex_injury.y, "Rate (%)" = rate) %>%
+  kable(caption = "Total numbers of each injury type for each sex, with rates of death for 
+    admission, by sex") %>%
+  row_spec(0,bold=TRUE) %>%
+  kable_styling(font_size = 7, latex_options = c("striped", "HOLD_position"), full_width = T)
+```
+
+\newpage
+## Plot 1
+
+Rates of death for admissions of each injury type, by age group.
+
+```{r plot 1, echo = TRUE, tidy.opts=list(width.cutoff = 70), tidy=TRUE, fig.width = 11, fig.height = 11}
+#plot
+plot1 <- ggplot(data=joined_df1, aes(x=injury_type, y=rate, fill = injury_type)) +
+  ggtitle(paste("Rates of death for admissions", "of each injury type, by age group")) +
+  geom_bar(stat="identity") + theme_bw() +
+  facet_wrap(~age_group) +
+  labs(x = "", y = paste("Death rate, by age group", "(% of admissions for each injury type)")) +
+  scale_fill_discrete(name = "Type of injury") +
+  theme(text = element_text(size = 18), legend.key.height = unit(1, 'cm'), legend.key.width = unit(1, 'cm'), axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank())
+plot1
+```
+
+\newpage
+## Plot 2
+
+Rates of death for admissions of each injury type, by sex.
+
+```{r plot 2, echo = TRUE, tidy.opts=list(width.cutoff = 70), tidy = TRUE}
+#plot
+plot2 <- ggplot(data=joined_df2, aes(x=injury_type, y=rate, fill = injury_type)) +
+  ggtitle("Rates of death for admissions of each injury type, by sex") +
+  geom_bar(stat="identity") +
+  theme_bw() + facet_wrap(~sex) +
+  labs(x = "", y = "Death rate, by sex (% of admissions for each injury type)") +
+  scale_fill_discrete(name = "Type of injury") +
+  theme(axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank())
+plot2
+```
+
+\newpage
+## Discussion
+
+From the tables and plots, several features of the data can be seen:
+
+1. The most common type of injury for all of the demographic groups used in this analysis (age group and sex), is Falls. This is particularly acute for the youngest and oldest age groups, with 42% of all admissions in the 0-4 years age group being for Falls, and 87% in the 75plus years age group.
+2. Rates of deaths by admissions for the first 3 age groups (0-4 years, 5-9 years and 10-14 years) are relatively low (<2.5%), for all injury types ('relatively' in this context refers to other age groups).
+3. For the next four age groups (15-24 years, 25-44 years, 45-64 years and 65-74 years), rates of death for all injury types remain relatively low (<5.5%), except Poisoning and RTA. In particular, the rate of death by Poisoning in the 25-44 and 45-64 age groups is significantly higher (40.80% and 39.58% respectively) than for any other type of injury.
+4. Rates of deaths for females and males are roughly the same for all injury types, except Poisoning, for which the rates for males (32.36%) are significantly higher than for females (14.39%).
+
+The first conclusion which can be drawn from this analysis is that Falls contribute to a significant amount of hospital admissions, more than any other type of injury.
+
+The second conclusion which can be drawn is that death rates by Poisoning of males in the age groups of 25 to 64 years old in Scotland could indicate an issue which requires attention by public and policy makers, for potential prevention strategies. 'Poisoning' includes deaths from drug abuse, specifically acute intoxication.
+
+These conclusions match similar conclusions in a 2021 publication by Public Health Scotland (PHS) (https://publichealthscotland.scot/media/5838/2021-03-23-ui-2021-report.pdf).
+
+Further analysis could include:
+
+1. Variations of these rates over geographical regions covered by the data (Heath Board Regions or Council Areas in Scotland)
+2. Variations of these rates over the time period covered by the data (2010-2019)
+3. Correlations with Scottish Index of Multiple Deprivation (SIMD) data
